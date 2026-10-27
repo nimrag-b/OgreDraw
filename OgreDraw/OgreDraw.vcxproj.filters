@@ -21,6 +21,9 @@
     <ClCompile Include="Linedraw.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
+    <ClCompile Include="OgreDef.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="OgreDef.h">

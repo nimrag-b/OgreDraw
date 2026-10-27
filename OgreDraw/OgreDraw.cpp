@@ -16,12 +16,17 @@
 static SDL_Window* window = NULL;
 static SDL_Renderer* renderer = NULL;
 
-static colour drawColour = {0,0,0,0x2F};
+static colour drawColour = {0xFF,0,0,0xFF};
 
+static int windowWidth = 460;
+static int windowHeight = 680;
 
-static float xo = 50;
-static float yo = 50;
+static float xo = -1000;
+static float yo = -1000;
 static float s = 0.5f;
+
+static int mPosX;
+static int mPosY;
 
 typedef std::vector<std::pair<int, int>> AA_Nodes;
 
@@ -82,7 +87,7 @@ void Layer::Undo(Stroke& stroke) {
     for (auto& it : stroke.changes) {
         colour* px = (colour*)(surface->pixels);
 
-        px[it.first] = it.second;
+        px[it.first] = it.second.prev;
     }
 
     if (SDL_MUSTLOCK(surface)) {
@@ -188,17 +193,17 @@ void Layer::DrawPoint(Brush& brush, int x, int y) {
 
 
                 uint8_t opacity = (uint8_t)(brush.colour.a * f);
-
+                colour cn = { brush.colour.r,brush.colour.g,brush.colour.b,opacity };
                 if (changes.changes.count(idx) != 0) {
-                    colour cn = changes.changes.at(idx).blend({ brush.colour.r,brush.colour.g,brush.colour.b,opacity });
-                    if (cn.a > px[idx].a) {
-                        px[idx] = cn;
+
+                    if (cn.a > changes.changes.at(idx).add.a) {
+                        changes.changes.at(idx).add = cn;
+                        px[idx] = changes.changes.at(idx).prev.blend(cn);
                     }
                 }
                 else {
-
-                    changes.changes.insert({ idx, px[idx] });
-                    px[idx] = px[idx].blend({ brush.colour.r,brush.colour.g,brush.colour.b,opacity });
+                    changes.changes.insert({ (uint32_t)idx, {px[idx], cn} });
+                    px[idx] = px[idx].blend(cn);
                 }
 
             }
@@ -213,16 +218,6 @@ void Layer::DrawPoint(Brush& brush, int x, int y) {
 }
 
 
-Layer* CreateLayer(int w, int h) {
-    Layer* layer = new Layer;
-    layer->surface = SDL_CreateSurface(w, h, SDL_PIXELFORMAT_RGBA32);
-    layer->gpuTexture = SDL_CreateTexture(renderer, SDL_PIXELFORMAT_RGBA32, SDL_TEXTUREACCESS_STREAMING, w, h);
-    SDL_SetTextureScaleMode(layer->gpuTexture, SDL_SCALEMODE_NEAREST);
-    layer->area = { 0,0,w,h };
-
-    return layer;
-}
-
 
 bool ctrl = false;
 bool space = false;
@@ -231,14 +226,18 @@ bool mdown = false;
 
 int xlast;
 int ylast;
-
-Layer* layer;
+Canvas canvas{ 2000,2000 };
 Brush* brush;
 
 #define CHANGE_MAX 50
 Stroke changeStack[CHANGE_MAX];
 int changeCount = 0;
 int changeTop = 0;
+
+
+int transform(int p, int w, int o) {
+    return (p - ((w / 2) + (o * s))) / s;
+}
 
 
 int sdl_proc_event(SDL_Event* e) {
@@ -259,7 +258,6 @@ int sdl_proc_event(SDL_Event* e) {
         case SDLK_SPACE:
             space = true;
             break;
-        }
 
         case SDLK_Z: {
             if (ctrl && changeCount > 0) {
@@ -274,13 +272,20 @@ int sdl_proc_event(SDL_Event* e) {
 
                 --changeCount;
 
-                layer->Undo(changeStack[changeTop]);
+                changeStack[changeTop].layer->Undo(changeStack[changeTop]);
 
                 changeStack[changeTop].changes.clear();
+                changeStack[changeTop].layer = nullptr;
 
             }
+        } break;
+        case SDLK_UP:
+            canvas.Select(SDL_clamp(canvas.SelectedIndex() + 1, 0, canvas.LayerCount() - 1));
+            break;
+        case SDLK_DOWN:
+            canvas.Select(SDL_clamp((int)canvas.SelectedIndex() - 1, 0, canvas.LayerCount() - 1));
+            break;
         }
-
     } break;
 
 
@@ -304,12 +309,12 @@ int sdl_proc_event(SDL_Event* e) {
             clickx = e->button.x;
             clicky = e->button.y;
 
-            xlast = (e->button.x / s) - (xo);
-            ylast = (e->button.y / s) - (yo);
+            xlast = transform(e->button.x, windowWidth, xo);
+            ylast = transform(e->button.y, windowHeight, yo);
 
             mdown = true;
             if (!space) {
-                layer->DrawPoint(*brush, xlast, ylast);
+                canvas.Selected()->DrawPoint(*brush, xlast, ylast);
             }
 
         }
@@ -317,8 +322,10 @@ int sdl_proc_event(SDL_Event* e) {
     case SDL_EVENT_MOUSE_BUTTON_UP: {
         if (e->button.button == SDL_BUTTON_LEFT) {
             mdown = false;
-            changeStack[changeTop] = layer->changes;
-            layer->changes.changes.clear();
+            changeStack[changeTop].changes = std::move(canvas.Selected()->changes.changes);
+            changeStack[changeTop].layer = canvas.Selected()->changes.layer;
+            //should be empty because of move semantics, but make sure anyway
+            canvas.Selected()->changes.changes.clear();
 
             changeTop = (changeTop + 1) % CHANGE_MAX;
 
@@ -329,15 +336,17 @@ int sdl_proc_event(SDL_Event* e) {
         }
     } break;
     case SDL_EVENT_MOUSE_MOTION: {
+        mPosX = e->motion.x;
+        mPosY = e->motion.y;
         if (mdown) {
             if (space) {
                 xo += e->motion.xrel / s;
                 yo += e->motion.yrel / s;
             }
             else {
-                int x = (e->motion.x / s) - (xo);
-                int y = (e->motion.y / s) - (yo);
-                Drawing::DrawLine(*brush, layer, xlast, ylast, x, y);
+                int x = transform(e->motion.x, windowWidth, xo);
+                int y = transform(e->motion.y, windowHeight, yo);
+                Drawing::DrawLine(*brush, canvas.Selected(), xlast, ylast, x, y);
                 xlast = x;
                 ylast = y;
             }
@@ -350,8 +359,13 @@ int sdl_proc_event(SDL_Event* e) {
     case SDL_EVENT_MOUSE_WHEEL: {
         s += e->wheel.y * 0.02f;
         s = s < 0.1f ? 0.1f : s > 40 ? 40 : s;
+
     } break;
 
+    case SDL_EVENT_WINDOW_RESIZED: {
+        windowWidth = e->window.data1;
+        windowHeight = e->window.data2;
+    } break;
 
     }
 
@@ -362,23 +376,20 @@ int main()
 {
     std::cout << "Hello World!\n";
 
-    SDL_CreateWindowAndRenderer("OgreDraw", 860, 480, SDL_WINDOW_RESIZABLE, &window, &renderer);
+    SDL_CreateWindowAndRenderer("OgreDraw", windowWidth, windowHeight, SDL_WINDOW_RESIZABLE, &window, &renderer);
 
-    Canvas canvas;
 
-    layer = CreateLayer(2000, 2000);
-    canvas.layers.push_back(layer);
-    layer->Clear(0xFF, 0xFF, 0xFF, 0xFF);
 
-    layer = CreateLayer(2000, 2000);
-    canvas.layers.push_back(layer);
+    Layer* baselayer = canvas.InsertLayer(renderer);
+    baselayer->Clear(0xFF, 0xFF, 0xFF, 0xFF);
 
+    Layer* layer2 = canvas.InsertLayer(renderer);
+    //layer2->Clear(0xFF, 0x00, 0xFF, 0xFF);
 
     brush = new Brush;
     brush->colour = drawColour;
     brush->shape = new  VectorShape{ VectorCircle(0,0,0.5f) };
     brush->width = 20;
-
 
 
 
@@ -389,18 +400,34 @@ int main()
 
         }
 
-        SDL_SetRenderDrawColor(renderer, 0xFF, 0x00, 0xFF, 0xFF);
+        SDL_SetRenderDrawColor(renderer, 0x00, 0x00, 0x00, 0xFF);
 
         SDL_RenderClear(renderer);
-        for (size_t i = 0; i < canvas.layers.size(); i++)
+        for (int i = 0; i < canvas.LayerCount(); ++i)
         {
-            canvas.layers[i]->Render(renderer, xo, yo, s);
+            canvas.Layers()[i]->Render(window, renderer, xo, yo, s);
         }
+        SDL_SetRenderDrawColor(renderer, 0, 0, 0, 0x90);
+
+        SDL_FRect r{ 0,0,300,200 };
+
+        SDL_RenderFillRect(renderer, &r);
+
+        SDL_SetRenderDrawColor(renderer, 0xFF, 0xFF, 0xFF, 0xFF);
+
+        char textbuf[512];
+
+        snprintf(textbuf, 512, "%d %d (%.2f %.2f) %.2f", mPosX, mPosY, xo, yo, s);
+        SDL_RenderDebugText(renderer, 10, 10, textbuf);
+
+        snprintf(textbuf, 512, "layer - %zu/%zu", canvas.SelectedIndex() + 1, canvas.LayerCount());
+        SDL_RenderDebugText(renderer, 10,30, textbuf);
+
+        snprintf(textbuf, 512, "brush - '%s' %.2fpx", "round", brush->width);
+        SDL_RenderDebugText(renderer, 10, 40, textbuf);
 
 
         // Update screen
         SDL_RenderPresent(renderer);
     }
-
-    delete layer;
 }

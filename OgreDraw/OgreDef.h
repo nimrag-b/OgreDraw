@@ -21,19 +21,27 @@ struct colour {
     inline colour blend(const colour& o) {
         colour v = *this;
 
-        if (o.a == 255) {
-            v.r = o.r;
-            v.g = o.g;
-            v.b = o.b;
-            v.a = o.a;
-        }
-        else {
-            float f = (float)o.a / 255.0f;
-            v.r = std::min(int(r + o.r * f), 255);
-            v.g = std::min(int(g + o.g * f), 255);
-            v.b = std::min(int(b + o.b * f), 255);
-            v.a = std::min(int(a + o.a), 255);
-        }
+        unsigned int alpha = o.a + 1;
+        unsigned int inv_alpha = 256 - o.a;
+
+        v.r = (unsigned char)((alpha * o.r + inv_alpha * r) >> 8);
+        v.g = (unsigned char)((alpha * o.g + inv_alpha * g) >> 8);
+        v.b = (unsigned char)((alpha * o.b + inv_alpha * b) >> 8);
+        v.a = std::min(int(o.a + a), 255);
+
+        //if (o.a == 255) {
+        //    v.r = o.r;
+        //    v.g = o.g;
+        //    v.b = o.b;
+        //    v.a = o.a;
+        //}
+        //else {
+        //    float f = (float)o.a / 255.0f;
+        //    v.r = std::min(int(r + o.r * f), 255);
+        //    v.g = std::min(int(g + o.g * f), 255);
+        //    v.b = std::min(int(b + o.b * f), 255);
+        //    v.a = std::min(int(a + o.a), 255);
+        //}
 
         return v;
 
@@ -156,20 +164,27 @@ struct IRect {
 };
 
 
-
+struct Layer;
 
 //supports canvasses up to 65000 px
 struct Stroke {
 
+    Stroke() : layer(nullptr){}
+
+    Stroke(Layer* layer) : layer(layer){}
+
     struct colourPair {
         colour prev;
-        colour next;
+        colour add;
     };
-
-    std::unordered_map<uint32_t, colour> changes;
+    Layer* layer;
+    std::unordered_map<uint32_t, colourPair> changes;
 };
 
 struct Layer {
+
+    Layer() : changes(this){}
+
     SDL_Surface* surface = NULL;
     SDL_Texture* gpuTexture = NULL;
     IRect area;
@@ -191,19 +206,55 @@ struct Layer {
 
     void Commit();
 
-    void Render(SDL_Renderer* renderer, float xo, float yo, float s) {
+    void Render(SDL_Window* window, SDL_Renderer* renderer, float xo, float yo, float s) {
         if (!synced) {
             Commit();
         }
+        int ww, wh;
+        SDL_GetWindowSize(window, &ww, &wh);
 
-        SDL_FRect r{ area.x + (xo * s),area.y + (yo * s),area.w * s, area.h * s};
+        SDL_FRect r{ area.x + (ww/2) + (xo * s),area.y + (wh/2) + (yo * s),area.w * s, area.h * s};
         SDL_RenderTexture(renderer, gpuTexture, NULL, &r);
     }
 
     void DrawPoint(Brush& brush, int x, int y);
 };
 
-struct Canvas {
-    std::vector<Layer*> layers;
+class Canvas {
+public:
+
+    Canvas(size_t w, size_t h) : mWidth(w), mHeight(h){}
+
+
+    ~Canvas();
+
+    Layer* InsertLayer(SDL_Renderer* renderer, size_t index = SIZE_MAX);
+
+    Layer* Selected() const {
+        if (mSelectedIndex > mLayers.size()) return nullptr;
+        return mLayers.at(mSelectedIndex);
+    }
+
+    void Select(size_t index) {
+        mSelectedIndex = index;
+    }
+
+    size_t SelectedIndex() const noexcept{
+        return mSelectedIndex;
+    }
+
+    size_t LayerCount() const {
+        return mLayers.size();
+    }
+
+    const std::vector<Layer*> Layers() const {
+        return mLayers;
+    }
+private:
+
+    std::vector<Layer*> mLayers;
+    size_t mSelectedIndex = 0;
+    size_t mWidth = 0;
+    size_t mHeight = 0;
 };
 
