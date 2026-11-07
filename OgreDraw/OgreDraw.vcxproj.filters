@@ -21,15 +21,30 @@
     <ClCompile Include="Linedraw.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
-    <ClCompile Include="OgreDef.cpp">
+    <ClCompile Include="Canvas.cpp">
+      <Filter>Source Files</Filter>
+    </ClCompile>
+    <ClCompile Include="Layer.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
-    <ClInclude Include="OgreDef.h">
+    <ClInclude Include="Linedraw.h">
       <Filter>Header Files</Filter>
     </ClInclude>
-    <ClInclude Include="Linedraw.h">
+    <ClInclude Include="Layer.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Brush.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="Canvas.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="ogretypes.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="VectorShape.h">
       <Filter>Header Files</Filter>
     </ClInclude>
   </ItemGroup>

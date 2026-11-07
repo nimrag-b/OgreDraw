@@ -1,21 +1,9 @@
 #pragma once
 #include <cstdint>
+#include <algorithm>
 
 namespace ogre{
 
-    template <typename T>
-    T& min(const T& a, const T& b){
-        return a < b ? a : b;
-    }
-    template <typename T>
-    T& max(const T& a, const T& b){
-        return a > b ? a : b;
-    }
-
-    template <typename T>
-    T& clamp(const T& v, const T& min, const T& max){
-        return (v > max) ? (max) : ((v < min) ? (min) : (v));
-    }
 
     
     struct Rect {
@@ -54,7 +42,7 @@ namespace ogre{
             v.r = (unsigned char)((alpha * o.r + inv_alpha * r) >> 8);
             v.g = (unsigned char)((alpha * o.g + inv_alpha * g) >> 8);
             v.b = (unsigned char)((alpha * o.b + inv_alpha * b) >> 8);
-            v.a = types::min(int(o.a + a), 255);
+            v.a = std::min(int(o.a + a), 255);
 
             return v;
 
