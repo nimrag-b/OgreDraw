@@ -7,8 +7,11 @@
 #include <algorithm>
 #include <unordered_map>
 
-#include "OgreDef.h"
+#include "Canvas.h"
+#include "ogretypes.h"
 #include "Linedraw.h"
+
+using namespace ogre;
 
 #define COL_KEY(x, y) (((uint16_t)(x)) | ((uint16_t)(y) << 16))
 

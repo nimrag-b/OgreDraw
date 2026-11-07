@@ -1,4 +1,4 @@
-#include "OgreDef.h"
+#include "Canvas.h"
 
 Canvas::~Canvas()
 {
